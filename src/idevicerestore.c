@@ -276,6 +276,7 @@ static void idevice_event_cb(const idevice_event_t *event, void *userdata)
 	}
 #endif
 	if (event->event == IDEVICE_DEVICE_ADD) {
+		int is_our_device = 0;
 		if (client->ignore_device_add_events) {
 			return;
 		}
@@ -285,14 +286,18 @@ static void idevice_event_cb(const idevice_event_t *event, void *userdata)
 			logger(LL_DEBUG, "%s: device %016" PRIx64 " (udid: %s) connected in normal mode\n", __func__, client->ecid, client->udid);
 			cond_signal(&client->device_event_cond);
 			mutex_unlock(&client->device_event_mutex);
+			is_our_device = 1;
 		} else if (client->ecid && restore_check_mode(client) == 0) {
 			mutex_lock(&client->device_event_mutex);
 			client->mode = MODE_RESTORE;
 			logger(LL_DEBUG, "%s: device %016" PRIx64 " (udid: %s) connected in restore mode\n", __func__, client->ecid, client->udid);
 			cond_signal(&client->device_event_cond);
 			mutex_unlock(&client->device_event_mutex);
+			is_our_device = 1;
 		}
-		if (!client->device) {
+		/* An add event for some other device must not open ours over USB while
+		 * the main thread may hold it (DFU/recovery), which aborts in libirecovery. */
+		if (is_our_device && !client->device) {
 			client->device = get_irecv_device(client);
 		}
 	} else if (event->event == IDEVICE_DEVICE_REMOVE) {
